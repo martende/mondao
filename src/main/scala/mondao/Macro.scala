@@ -92,7 +92,7 @@ object Macros {
     import c.universe._
     import definitions._
 
-    def packOne(name:c.universe.TermName,decoded:String,tpe:c.universe.Type) = {
+    def packOne(name:c.universe.TermName,nameStr:String,decoded:String,tpe:c.universe.Type) = {
       println("toDBE",tpe,tpe =:= ByteTpe)
 
       if (tpe =:= NullTpe)                                                   {
@@ -106,15 +106,13 @@ object Macros {
         || tpe =:= FloatTpe   || tpe =:= c.typeOf[java.lang.Float    ]
         || tpe =:= DoubleTpe  || tpe =:= c.typeOf[java.lang.Double   ]
         || tpe =:= BooleanTpe || tpe =:= c.typeOf[java.lang.Boolean  ]) {
-        q"$decoded ->  BsonNumber(o.$name)"
-      } else c.inferImplicitValue(typeOf[Writes[tpe.type]]) match {
-         case EmptyTree => {
-           println(c.inferImplicitValue(typeOf[Writes[tpe.type]]))
-           println(c.inferImplicitValue(typeOf[Writes[tpe.type]]))
-           throw new Exception(s"tpe.typeSymbol.fullName=${tpe.typeSymbol.fullName}")
-         }
-         case packer => q"$decoded ->  toBson(o.$name)"
-      }
+        q"$decoded ->  BsonNumber($nameStr)"
+      /*} else if (tpe.typeSymbol.fullName == "scala.Array") { // Array is final class
+        val tmp = TermName(c.freshName("x$"))
+        tpe.typeArgs.head
+        q"$decoded ->  o.$name.map($packFun)"
+      */} else
+        q"$decoded ->  toBson(o.$name)"
     }
 
     val tpe: c.universe.Type = weakTypeOf[A]
@@ -125,11 +123,11 @@ object Macros {
 
     val toDBObject = fields.map { field ⇒
       val name: c.universe.TermName = field.name.toTermName
-      packOne(name,name.decodedName.toString,field.typeSignature)
+      packOne(name,"o." + name.decodedName.toString,name.decodedName.toString,field.typeSignature)
     }
 
-    println("reto",toDBObject)
-    c.Expr[Writes[A]] {
+
+    var ret =c.Expr[Writes[A]] {
       q"""
          import mondao.Convert.toBson
          new Writes[$tpe] {
@@ -140,6 +138,10 @@ object Macros {
     """
     }
 
+    println("Replaced macro for ",weakTypeOf[A])
+    println(ret)
+    println("--------------------------")
+    ret
   }
 
 }
