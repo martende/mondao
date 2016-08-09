@@ -37,44 +37,49 @@ object Macros {
     import c.universe._
     import definitions._
 
-    val tpe = weakTypeOf[A]
-    val companion = tpe.typeSymbol.companion
+    // "a.b.c" -> Select(Select(Ident("a"), "b"), "c")
+    def nameAsTree(m: String): Tree =
+      m.split("\\.this\\.") match {
+        case Array(t, n) => n.split('.').foldLeft[Tree](This(newTypeName(t))) { Select(_, _) }
+        case Array(n)    => n.split('.').foldLeft[Tree](null) {
+          case (null, part  ) => Ident(TermName(part))
+          case (tre,  part  ) => Select(tre, TermName(part))
+        }
+      }
 
-    val fields = tpe.decls.collectFirst {
-      case m: MethodSymbol if m.isPrimaryConstructor ⇒ m
-    }.get.paramLists.head
+    def unpackOne(name:String,tpe:c.universe.Type): c.universe.Tree = {
+      val oname = nameAsTree(name)
 
-    val fromDBObject: List[c.universe.Tree] = List()/*fields.map { field ⇒
-      val name = field.name.toTermName
-      val decoded = name.decodedName.toString
-      //val returnType: c.universe.Type = tpe.decl(name).typeSignature
-      //println(name,returnType,field.typeSignature)
-      val tpe: c.universe.Type = field.typeSignature
-
-      if (tpe =:= NullTpe)                                                   {
-        q"$decoded ->  BsonNull()"
-      } else if(tpe =:= CharTpe    || tpe =:= c.typeOf[java.lang.Character] || tpe =:= c.typeOf[java.lang.String] ) {
-        q"$decoded ->  BsonString(o.$name.toString)"
-      } else if(tpe =:= ByteTpe    || tpe =:= c.typeOf[java.lang.Byte     ]
+      if(tpe =:= ByteTpe    || tpe =:= c.typeOf[java.lang.Byte     ]
         || tpe =:= ShortTpe   || tpe =:= c.typeOf[java.lang.Short    ]
         || tpe =:= IntTpe     || tpe =:= c.typeOf[java.lang.Integer  ]
         || tpe =:= LongTpe    || tpe =:= c.typeOf[java.lang.Long     ]
         || tpe =:= FloatTpe   || tpe =:= c.typeOf[java.lang.Float    ]
         || tpe =:= DoubleTpe  || tpe =:= c.typeOf[java.lang.Double   ]
         || tpe =:= BooleanTpe || tpe =:= c.typeOf[java.lang.Boolean  ]) {
-        q"$decoded ->  BsonNumber(o.$name)"
+        q"$oname.asNumber()"
       } else {
-        throw new Exception(s"tpe.typeSymbol.fullName=${tpe.typeSymbol.fullName}")
+        throw new ConvertException("unpackOne","")
       }
-      // q"$decoded → t.$name"
+    }
 
-    }*/
+    val tpe = weakTypeOf[A]
+    val companion = tpe.typeSymbol.fullName
+
+    val fields = tpe.decls.collectFirst {
+      case m: MethodSymbol if m.isPrimaryConstructor ⇒ m
+    }.get.paramLists.head
+
+    val fromDBObject: List[c.universe.Tree] = fields.map { field ⇒
+      val name: c.universe.TermName = field.name.toTermName
+      unpackOne("o." + name.decodedName.toString,field.typeSignature)
+    }
 
     val ret = c.Expr[Reads[A]] {
       q"""
          new _root_.mondao.Reads[$tpe] {
             def reads(o:BsonValue) = try {
-              if ( o.isInstanceOf[BsonDocument] ) throw new _root_.mondao.MondaoException("init","case class is not BsonDocument")
+              if ( o.isInstanceOf[BsonDocument] ) throw new _root_.mondao.ConvertException("init","case class is not BsonDocument")
               _root_.scala.util.Success($companion(..$fromDBObject))
             } catch {
               case ex:Throwable => _root_.scala.util.Failure(ex)
@@ -82,7 +87,10 @@ object Macros {
       }
     """
     }
-    println("RET",ret)
+
+    println("Replaced macro for ",weakTypeOf[A])
+    println(ret)
+    println("--------------------------")
     ret
   }
 
@@ -92,13 +100,25 @@ object Macros {
     import c.universe._
     import definitions._
 
-    def packOne(name:c.universe.TermName,nameStr:String,decoded:String,tpe:c.universe.Type) = {
-      println("toDBE",tpe,tpe =:= ByteTpe)
+    // "a.b.c" -> Select(Select(Ident("a"), "b"), "c")
+    def nameAsTree(m: String): Tree =
+      m.split("\\.this\\.") match {
+        case Array(t, n) => n.split('.').foldLeft[Tree](This(newTypeName(t))) { Select(_, _) }
+        case Array(n)    => n.split('.').foldLeft[Tree](null) {
+          case (null, part  ) => Ident(TermName(part))
+          case (tre,  part  ) => Select(tre, TermName(part))
+        }
+      }
 
+
+    def packOne(name:String,tpe:c.universe.Type): c.universe.Tree = {
+      val oname = nameAsTree(name)
       if (tpe =:= NullTpe)                                                   {
-        q"$decoded ->  BsonNull()"
+        q"BsonNull()"
       } else if(tpe =:= CharTpe    || tpe =:= c.typeOf[java.lang.Character] || tpe =:= c.typeOf[java.lang.String] ) {
-        q"$decoded ->  BsonString(o.$name.toString)"
+        q"BsonString($oname.toString)"
+      } else if(tpe =:= BooleanTpe) {
+        q"BsonBoolean($oname)"
       } else if(tpe =:= ByteTpe    || tpe =:= c.typeOf[java.lang.Byte     ]
         || tpe =:= ShortTpe   || tpe =:= c.typeOf[java.lang.Short    ]
         || tpe =:= IntTpe     || tpe =:= c.typeOf[java.lang.Integer  ]
@@ -106,13 +126,36 @@ object Macros {
         || tpe =:= FloatTpe   || tpe =:= c.typeOf[java.lang.Float    ]
         || tpe =:= DoubleTpe  || tpe =:= c.typeOf[java.lang.Double   ]
         || tpe =:= BooleanTpe || tpe =:= c.typeOf[java.lang.Boolean  ]) {
-        q"$decoded ->  BsonNumber($nameStr)"
-      /*} else if (tpe.typeSymbol.fullName == "scala.Array") { // Array is final class
+        q"BsonNumber($oname)"
+      } else if (tpe.baseClasses.exists(_.fullName == "scala.collection.GenMapLike")) {
         val tmp = TermName(c.freshName("x$"))
-        tpe.typeArgs.head
-        q"$decoded ->  o.$name.map($packFun)"
-      */} else
-        q"$decoded ->  toBson(o.$name)"
+        val innerType = tpe.typeArgs.tail.head
+        val keyType = tpe.typeArgs.head
+        val packAst = packOne("x._2",innerType)
+        val packFun = q"def $tmp(x:($keyType,$innerType)) = { (x._1.toString , $packAst) }"
+
+        q"BsonDocument({ $packFun ; $oname.map($tmp) })"
+
+      } else if (tpe.typeSymbol.fullName == "scala.Option") {
+        val tmp = TermName(c.freshName("x$"))
+        val innerType = tpe.typeArgs.head
+        val packAst = packOne("x",innerType)
+        val packFun = q"def $tmp(x:$innerType) = { $packAst }"
+
+        q"""{
+            $packFun
+            if ($oname.isDefined) $tmp($oname.get) else BsonNull()
+
+        }"""
+      } else if (tpe.typeSymbol.fullName == "scala.Array" || tpe.baseClasses.exists(_.fullName == "scala.collection.Traversable")) { // Array is final class
+        val tmp = TermName(c.freshName("x$"))
+        val innerType = tpe.typeArgs.head
+        val packAst = packOne("x",innerType)
+
+        val packFun = q"def $tmp(x:$innerType) = { $packAst }"
+        q"BsonArray({ $packFun ; $oname.map($tmp) })"
+      } else
+        q"toBson($name)"
     }
 
     val tpe: c.universe.Type = weakTypeOf[A]
@@ -123,7 +166,8 @@ object Macros {
 
     val toDBObject = fields.map { field ⇒
       val name: c.universe.TermName = field.name.toTermName
-      packOne(name,"o." + name.decodedName.toString,name.decodedName.toString,field.typeSignature)
+      val rightPart = packOne("o." + name.decodedName.toString,field.typeSignature)
+      q"${name.decodedName.toString} -> $rightPart"
     }
 
 
