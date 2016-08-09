@@ -89,13 +89,125 @@ class WritesSpec extends FunSuite {
 
 }
 */
+
+
 class ReadSpec extends FunSuite {
+  /*
+  case class ctest1(a:Int)
   test("test1") {
-    case class AAA(a:Int)
-    implicit val w1 = mondao.Macros.reads[AAA]
-    val d = BsonDocument("a" -> 10)
-    val a = mondao.Convert.fromBson(d)
-    assert(a == AAA(10))
+    implicit val w1 = mondao.Macros.reads[ctest1]
+    val d = BsonDocument("a" -> 12)
+    val a = mondao.Convert.fromBson(d).get
+    assert(a == ctest1(12))
   }
 
+  case class ctest2(a:Long)
+  test("test2") {
+    implicit val w1 = mondao.Macros.reads[ctest2]
+    val d = BsonDocument("a" -> 12)
+    val a = mondao.Convert.fromBson(d).get
+    assert(a == ctest2(12))
+  }
+
+  case class ctest3(a:Double)
+  test("test3") {
+    implicit val w1 = mondao.Macros.reads[ctest3]
+    val d = BsonDocument("a" -> 12.0)
+    val a = mondao.Convert.fromBson(d).get
+    assert(a == ctest3(12))
+  }
+
+  case class ctest40(a:Float)
+  case class ctest41(b:Float)
+  test("test4") {
+    implicit val w1 = mondao.Macros.reads[ctest40]
+    implicit val w2 = mondao.Macros.reads[ctest41]
+    val d = BsonDocument("a" -> 12.0)
+    val a = mondao.Convert.fromBson[ctest40](d).get
+    assert(a == ctest40(12.0f))
+  }
+
+
+
+  case class ctest50(a:Int)
+  case class ctest5(a:Int,b:ctest50)
+  test("test5") {
+    implicit val w2 = mondao.Macros.reads[ctest50]
+
+    implicit val w1 = mondao.Macros.reads[ctest5]
+
+    val d = BsonDocument("a" -> 11,"b" -> BsonDocument("a" -> 12))
+    val a = mondao.Convert.fromBson[ctest5](d).get
+    assert(a == ctest5(11,ctest50(12)))
+
+    val d2 = BsonDocument("a" -> 11,"b" -> BsonDocument("a0" -> 12))
+    val a2 = mondao.Convert.fromBson[ctest5](d2)
+    assert(a2.isFailure)
+  }
+
+
+  case class ctest6(a:Boolean)
+  test("test6") {
+    implicit val w1 = mondao.Macros.reads[ctest6]
+    val d = BsonDocument("a" -> true)
+    val a = mondao.Convert.fromBson[ctest6](d).get
+    assert(a == ctest6(true))
+  }
+
+  case class ctest7(a:String)
+  test("test7") {
+    implicit val w1 = mondao.Macros.reads[ctest7]
+    val d = BsonDocument("a" -> "A")
+    val a = mondao.Convert.fromBson[ctest7](d).get
+    assert(a == ctest7("A"))
+  }
+
+
+  case class ctest8(a:Array[String])
+  test("test8") {
+    implicit val w1 = mondao.Macros.reads[ctest8]
+    val d = BsonDocument("a" -> BsonArray("A","B"))
+    val a = mondao.Convert.fromBson[ctest8](d).get
+    assert(a.a.toList == List("A","B"))
+  }
+
+  case class ctest9(a:Array[Int])
+  test("test9") {
+    implicit val w1 = mondao.Macros.reads[ctest9]
+    val d = BsonDocument("a" -> BsonArray(1,2))
+    val a = mondao.Convert.fromBson[ctest9](d).get
+    assert(a.a.toList == List(1,2))
+  }
+
+
+  case class ctest10(a:List[Int])
+  test("test10") {
+    implicit val w1 = mondao.Macros.reads[ctest10]
+    val d = BsonDocument("a" -> BsonArray(1,2))
+    val a = mondao.Convert.fromBson[ctest10](d).get
+    assert(a.a == List(1,2))
+  }
+
+
+  case class ctest11(a:Map[String,Int])
+  test("test11") {
+    implicit val w1 = mondao.Macros.reads[ctest11]
+    val d = BsonDocument("a" -> BsonDocument("a" -> 1))
+    val a = mondao.Convert.fromBson[ctest11](d).get
+    assert(a == ctest11(Map("a"->1)))
+  }
+  */
+
+  object ImageTagsTp extends Enumeration {
+    val faceLeft = Value
+    val faceRight = Value
+    val faceAn = Value
+  }
+  case class ctest12(a:Map[ImageTagsTp.Value,Int])
+  test("test12") {
+    implicit val w1 = mondao.Macros.reads[ctest12]
+    val d = BsonDocument("a" -> BsonDocument("faceLeft" -> 1,"faceRight" -> 2))
+    val a = mondao.Convert.fromBson[ctest12](d).get
+    assert(a == ctest12(Map(ImageTagsTp.faceLeft->1,ImageTagsTp.faceRight->2)))
+  }
 }

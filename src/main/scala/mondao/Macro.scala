@@ -1,5 +1,7 @@
 package mondao
 
+import org.bson.BsonValue
+
 import scala.annotation.implicitNotFound
 import org.mongodb.scala.bson._
 
@@ -46,25 +48,142 @@ object Macros {
           case (tre,  part  ) => Select(tre, TermName(part))
         }
       }
+/*
+    def getCompanionSymbol(s: Symbol): Symbol = s.companion match {
+      case NoSymbol if s.owner.isMethod || s.owner.isTerm =>
+        val tn = s.name.toTermName
+        def findInContext(ctx: scala.tools.nsc.typechecker.Contexts#Context): Symbol =
+          ctx.scope.asInstanceOf[Scope] find { sym => sym.isModule && sym.owner == s.owner && sym.name.toTermName == tn } match {
+            case Some(sym)                => assert(!sym.isMethod); sym
+            case None if ctx.outer != ctx => findInContext(ctx.outer)
+            case None                     => NoSymbol
+          }
+        findInContext(c.asInstanceOf[scala.reflect.macros.runtime.Context].callsiteTyper.context)
 
-    def unpackOne(name:String,tpe:c.universe.Type): c.universe.Tree = {
-      val oname = nameAsTree(name)
+      case sym: Symbol => sym
+    }
+*/
+    def unpackOne(term:String,field:String,tpe:c.universe.Type): c.universe.Tree = {
+      val oname = if (field  == "" ) nameAsTree(term) else
+        q"""{
+           val t=${ nameAsTree(term) }.get($field);
+           if  ( t == null ) throw new _root_.mondao.ConvertException($field,"is null") else t
+           }"""
 
-      if(tpe =:= ByteTpe    || tpe =:= c.typeOf[java.lang.Byte     ]
-        || tpe =:= ShortTpe   || tpe =:= c.typeOf[java.lang.Short    ]
-        || tpe =:= IntTpe     || tpe =:= c.typeOf[java.lang.Integer  ]
-        || tpe =:= LongTpe    || tpe =:= c.typeOf[java.lang.Long     ]
-        || tpe =:= FloatTpe   || tpe =:= c.typeOf[java.lang.Float    ]
-        || tpe =:= DoubleTpe  || tpe =:= c.typeOf[java.lang.Double   ]
-        || tpe =:= BooleanTpe || tpe =:= c.typeOf[java.lang.Boolean  ]) {
-        q"$oname.asNumber()"
+      if(
+        //tpe =:= ByteTpe    || tpe =:= c.typeOf[java.lang.Byte     ]
+        //|| tpe =:= ShortTpe   || tpe =:= c.typeOf[java.lang.Short    ]
+         tpe =:= IntTpe     || tpe =:= c.typeOf[java.lang.Integer  ]
+
+
+        //||
+        //||
+      ) {
+        q"$oname.asNumber().intValue()"
+      } else if (tpe =:= LongTpe    || tpe =:= c.typeOf[java.lang.Long     ]) {
+        q"$oname.asNumber().longValue()"
+      } else if (tpe =:= FloatTpe    || tpe =:= c.typeOf[java.lang.Float     ]) {
+        q"$oname.asNumber().doubleValue().toFloat"
+      } else if (tpe =:= DoubleTpe  || tpe =:= c.typeOf[java.lang.Double   ]) {
+        q"$oname.asNumber().doubleValue()"
+      } else if (tpe =:= BooleanTpe || tpe =:= c.typeOf[java.lang.Boolean  ]) {
+        q"$oname.asBoolean().getValue()"
+      } else if(tpe =:= CharTpe    || tpe =:= c.typeOf[java.lang.Character] || tpe =:= c.typeOf[java.lang.String] ) {
+        q"$oname.asString().getValue()"
+      } else if (tpe.baseClasses.exists(_.fullName == "scala.collection.GenMapLike")) {
+        val tpeKey: c.universe.Type = tpe.typeArgs.head
+        val tpeElement = tpe.typeArgs.tail.head
+        val unpackFunName = TermName(c.freshName("unpack$"))
+        val unpackFun = q"def $unpackFunName(x:BsonValue) = { ${unpackOne("x","",tpeElement)} }"
+        if (tpeKey =:= c.typeOf[String]) {
+          //BsonDocument().keySet().fo
+          q"""{
+            $unpackFun
+           val t=${nameAsTree(term)}.get($field)
+           if  ( t == null ) {
+              ${tpe.typeSymbol.companion}.empty[..${tpe.typeArgs}]
+           } else if ( ! t.isDocument() ) {
+             throw new _root_.mondao.ConvertException($field,"is not Document but '" + t.getClass.toString + "'")
+           } else {
+            val bldr = ${tpe.typeSymbol.companion}.newBuilder[..${tpe.typeArgs}]
+            val ta = t.asDocument()
+            val it = ta.keySet().iterator()
+            while ( it.hasNext() ) {
+              val k = it.next()
+              val o = ta.get(k)
+              bldr += k -> $unpackFunName(o)
+            }
+            bldr.result
+           }
+        }"""
+        } else if ( tpeKey.baseClasses.exists(_.fullName == "scala.Enumeration.Value") ){
+            val baseEnumClass = nameAsTree(tpeKey.toString().split('.').dropRight(1).mkString("."))
+            q"""{
+              $unpackFun
+             val t=${nameAsTree(term)}.get($field)
+             if  ( t == null ) {
+                ${tpe.typeSymbol.companion}.empty[..${tpe.typeArgs}]
+             } else if ( ! t.isDocument() ) {
+               throw new _root_.mondao.ConvertException($field,"is not Document but '" + t.getClass.toString + "'")
+             } else {
+              val bldr = ${tpe.typeSymbol.companion}.newBuilder[..${tpe.typeArgs}]
+              val ta = t.asDocument()
+              val it = ta.keySet().iterator()
+              while ( it.hasNext() ) {
+                val k = it.next()
+                val o = ta.get(k)
+                bldr += $baseEnumClass.withName(k) -> $unpackFunName(o)
+              }
+              bldr.result
+             }
+          }"""
+        } else {
+          c.abort(c.enclosingPosition, s"Key for dict is not to string convertable $tpeKey")
+        }
+      } else if (tpe.typeSymbol.fullName == "scala.Array" || tpe.baseClasses.exists(_.fullName == "scala.collection.Traversable")) { // Array is final class
+        val tpeElement = tpe.typeArgs.head
+        val unpackFunName = TermName(c.freshName("unpack$"))
+        val unpackFun = q"def $unpackFunName(x:BsonValue) = { ${unpackOne("x","",tpeElement)} }"
+        q"""{
+            $unpackFun
+           val t=${nameAsTree(term)}.get($field)
+           if  ( t == null ) {
+              ${tpe.typeSymbol.companion}.empty[..${tpe.typeArgs}]
+           } else if ( ! t.isArray() ) {
+             throw new _root_.mondao.ConvertException($field,"is not array")
+           } else {
+            val bldr = ${tpe.typeSymbol.companion}.newBuilder[..${tpe.typeArgs}]
+            val ta = t.asArray()
+            val sz = ta.size()
+            var i = 0
+            while ( i < sz ) {
+              val o = ta.get(i)
+              bldr += $unpackFunName(o)
+              i+=1
+            }
+            bldr.result
+           }
+        }"""
+    //BsonArray().get
+        /*val tmp = TermName(c.freshName("x$"))
+        val innerType = tpe.typeArgs.head
+        val packAst = packOne("x",innerType)
+
+        val packFun = q"def $tmp(x:$innerType) = { $packAst }"
+        q"BsonArray({ $packFun ; $oname.map($tmp) })"
+        */
       } else {
-        throw new ConvertException("unpackOne","")
+        //c.abort(c.enclosingPosition, s"unpackOne - type $tpe can not be converted to Bson")
+        q"""_root_.mondao.Convert.fromBson[$tpe]($oname).get"""
       }
     }
 
-    val tpe = weakTypeOf[A]
-    val companion = tpe.typeSymbol.fullName
+    val tpe: c.universe.Type = weakTypeOf[A]
+    val companion: c.universe.Symbol = tpe.typeSymbol.companion
+
+    if (companion == NoSymbol ) {
+      c.abort(c.enclosingPosition, s"Companion symbol not found. Can't find companien for inner classes")
+    }
 
     val fields = tpe.decls.collectFirst {
       case m: MethodSymbol if m.isPrimaryConstructor ⇒ m
@@ -72,15 +191,17 @@ object Macros {
 
     val fromDBObject: List[c.universe.Tree] = fields.map { field ⇒
       val name: c.universe.TermName = field.name.toTermName
-      unpackOne("o." + name.decodedName.toString,field.typeSignature)
+      unpackOne("o" , name.decodedName.toString,field.typeSignature)
     }
 
+    //val fromDBObject: List[c.universe.Tree] = List()
     val ret = c.Expr[Reads[A]] {
       q"""
          new _root_.mondao.Reads[$tpe] {
-            def reads(o:BsonValue) = try {
-              if ( o.isInstanceOf[BsonDocument] ) throw new _root_.mondao.ConvertException("init","case class is not BsonDocument")
-              _root_.scala.util.Success($companion(..$fromDBObject))
+            def reads(_o:BsonValue) = try {
+              if ( ! _o.isInstanceOf[BsonDocument] ) throw new _root_.mondao.ConvertException("init","case class is not BsonDocument")
+              val o = _o.asInstanceOf[BsonDocument]
+              _root_.scala.util.Success($companion.apply(..$fromDBObject))
             } catch {
               case ex:Throwable => _root_.scala.util.Failure(ex)
             }
@@ -117,7 +238,7 @@ object Macros {
         q"BsonNull()"
       } else if(tpe =:= CharTpe    || tpe =:= c.typeOf[java.lang.Character] || tpe =:= c.typeOf[java.lang.String] ) {
         q"BsonString($oname.toString)"
-      } else if(tpe =:= BooleanTpe) {
+      } else if(tpe =:= BooleanTpe || tpe =:= c.typeOf[java.lang.Boolean  ]) {
         q"BsonBoolean($oname)"
       } else if(tpe =:= ByteTpe    || tpe =:= c.typeOf[java.lang.Byte     ]
         || tpe =:= ShortTpe   || tpe =:= c.typeOf[java.lang.Short    ]
@@ -125,7 +246,7 @@ object Macros {
         || tpe =:= LongTpe    || tpe =:= c.typeOf[java.lang.Long     ]
         || tpe =:= FloatTpe   || tpe =:= c.typeOf[java.lang.Float    ]
         || tpe =:= DoubleTpe  || tpe =:= c.typeOf[java.lang.Double   ]
-        || tpe =:= BooleanTpe || tpe =:= c.typeOf[java.lang.Boolean  ]) {
+        ) {
         q"BsonNumber($oname)"
       } else if (tpe.baseClasses.exists(_.fullName == "scala.collection.GenMapLike")) {
         val tmp = TermName(c.freshName("x$"))
@@ -155,7 +276,7 @@ object Macros {
         val packFun = q"def $tmp(x:$innerType) = { $packAst }"
         q"BsonArray({ $packFun ; $oname.map($tmp) })"
       } else
-        q"toBson($name)"
+        q"_root_.mondao.Convert.toBson($name)"
     }
 
     val tpe: c.universe.Type = weakTypeOf[A]
@@ -173,7 +294,6 @@ object Macros {
 
     var ret =c.Expr[Writes[A]] {
       q"""
-         import mondao.Convert.toBson
          new Writes[$tpe] {
              def writes(o:$tpe) = BsonDocument(
                ..$toDBObject
