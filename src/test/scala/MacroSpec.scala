@@ -1,11 +1,12 @@
 import mondao.{Reads, Writes}
+import org.bson.types.ObjectId
 import org.mongodb.scala.bson.{BsonDocument, _}
 import org.scalatest.FunSuite
 
 import scala.util.{Failure, Success, Try}
-/*
-class WritesSpec extends FunSuite {
 
+class WritesSpec extends FunSuite {
+  /*
   test("test1") {
     case class AAA(a:Int,b:String)
     implicit val w1 = new Writes[AAA] {
@@ -35,6 +36,7 @@ class WritesSpec extends FunSuite {
     val d = mondao.Convert.toBson(AAA2(10,"20"))
     assert(d == BsonDocument("a" -> 10, "b" -> "20"))
   }
+
   test("test3") {
     case class BBB(a:Int)
     case class AAA(a:Int,b:BBB)
@@ -43,6 +45,7 @@ class WritesSpec extends FunSuite {
     val d = mondao.Convert.toBson(AAA(10,BBB(20)))
     assert(d == BsonDocument("a" -> 10, "b" -> BsonDocument("a" -> 20)))
   }
+
 
   test("test4") {
     case class AAA(a:Array[Int])
@@ -87,12 +90,19 @@ class WritesSpec extends FunSuite {
     assert(d == BsonDocument("a" -> BsonDocument("faceLeft" ->true)))
   }
 
-}
 */
+  test("test9") {
+    case class AAA(a:String,b:ObjectId)
+    implicit val w2 = mondao.Macros.writesDebug[AAA]
+    val oid = new ObjectId()
+    val d = mondao.Convert.toBson(AAA("10",oid))
+    assert(d == BsonDocument("a" -> "10", "b" -> oid))
+  }
 
+}
 
+/*
 class ReadSpec extends FunSuite {
-  /*
   case class ctest1(a:Int)
   test("test1") {
     implicit val w1 = mondao.Macros.reads[ctest1]
@@ -196,7 +206,7 @@ class ReadSpec extends FunSuite {
     val a = mondao.Convert.fromBson[ctest11](d).get
     assert(a == ctest11(Map("a"->1)))
   }
-  */
+
 
   object ImageTagsTp extends Enumeration {
     val faceLeft = Value
@@ -211,3 +221,4 @@ class ReadSpec extends FunSuite {
     assert(a == ctest12(Map(ImageTagsTp.faceLeft->1,ImageTagsTp.faceRight->2)))
   }
 }
+*/

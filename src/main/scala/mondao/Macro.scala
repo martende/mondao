@@ -30,6 +30,7 @@ object Macros {
   import language.experimental.macros
 
   def writes[A] = macro writesImpl[A]
+  def writesDebug[A] = macro writesImplDebug[A]
 
   def reads[A] = macro readsImpl[A]
 
@@ -90,6 +91,8 @@ object Macros {
         q"$oname.asBoolean().getValue()"
       } else if(tpe =:= CharTpe    || tpe =:= c.typeOf[java.lang.Character] || tpe =:= c.typeOf[java.lang.String] ) {
         q"$oname.asString().getValue()"
+      } else if (tpe.typeSymbol.fullName == "org.bson.types.ObjectId" ) {
+        q"$oname.asObjectId().getValue()"
       } else if (tpe.baseClasses.exists(_.fullName == "scala.collection.GenMapLike")) {
         val tpeKey: c.universe.Type = tpe.typeArgs.head
         val tpeElement = tpe.typeArgs.tail.head
@@ -215,9 +218,12 @@ object Macros {
     ret
   }
 
+  def writesImpl[A: c.WeakTypeTag](c: Context) = _writesImpl[A](c,false)
+
+  def writesImplDebug[A: c.WeakTypeTag](c: Context) = _writesImpl[A](c,true)
 
 
-  def writesImpl[A: c.WeakTypeTag](c: Context): c.Expr[Writes[A]] = {
+  def _writesImpl[A: c.WeakTypeTag](c: Context,dbg: Boolean): c.Expr[Writes[A]] = {
     import c.universe._
     import definitions._
 
@@ -268,6 +274,8 @@ object Macros {
             if ($oname.isDefined) $tmp($oname.get) else BsonNull()
 
         }"""
+      } else if (tpe.typeSymbol.fullName == "org.bson.types.ObjectId" ) {
+        q"BsonObjectId($oname)"
       } else if (tpe.typeSymbol.fullName == "scala.Array" || tpe.baseClasses.exists(_.fullName == "scala.collection.Traversable")) { // Array is final class
         val tmp = TermName(c.freshName("x$"))
         val innerType = tpe.typeArgs.head
@@ -276,7 +284,7 @@ object Macros {
         val packFun = q"def $tmp(x:$innerType) = { $packAst }"
         q"BsonArray({ $packFun ; $oname.map($tmp) })"
       } else
-        q"_root_.mondao.Convert.toBson($name)"
+        q"_root_.mondao.Convert.toBson($oname)"
     }
 
     val tpe: c.universe.Type = weakTypeOf[A]
@@ -302,9 +310,12 @@ object Macros {
     """
     }
 
-    println("Replaced macro for ",weakTypeOf[A])
-    println(ret)
-    println("--------------------------")
+    if (dbg) {
+      println("Replaced macro for '" + weakTypeOf[A].toString+ "'")
+      println(ret)
+      println("--------------------------")
+    }
+
     ret
   }
 
