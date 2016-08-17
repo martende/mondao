@@ -117,6 +117,7 @@ class WritesSpec extends FunSuite {
 
 
 class ReadSpec extends FunSuite {
+  /*
   case class ctest1(a:Int)
   test("test1") {
     implicit val w1 = mondao.Macros.reads[ctest1]
@@ -264,6 +265,15 @@ class ReadSpec extends FunSuite {
     val d = BsonDocument("a" -> "faceLeft")
     val a = mondao.Convert.fromBson[ctest14](d).get
     assert(a == ctest14(test14Enum.faceLeft))
+  }
+*/
+  case class ctest15(a:Boolean=true,b:Int)
+
+  test("test15") {
+    implicit val w2 = mondao.Macros.reads[ctest15]
+    val d = BsonDocument("b"->10)
+    val a = mondao.Convert.fromBson[ctest15](d).get
+    assert(a == ctest15(true,10))
   }
 
 }

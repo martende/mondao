@@ -68,14 +68,27 @@ object Macros {
       case sym: Symbol => sym
     }
 */
-    def unpackOne(term:String,field:String,tpe:c.universe.Type): c.universe.Tree = {
+    def unpackOne(term:String,field:String,tpe:c.universe.Type,defaultVal : Option[c.universe.Tree]): c.universe.Tree = {
+
+      val defaultEx: c.universe.Tree =  q"""throw new _root_.mondao.ConvertException($field,"is null or not exists")"""
+
+      val exOrDefault = defaultVal.getOrElse(defaultEx)
+
       val oname = if (field  == "" ) nameAsTree(term) else
         q"""{
            val t=${ nameAsTree(term) }.get($field);
-           if  ( t == null ) throw new _root_.mondao.ConvertException($field,"is null or not exists") else t
+           if  ( t == null ) $defaultEx else t
            }"""
 
-      if(
+      def onameWithSelector(selector:c.universe.Tree) = if (field  == "" ) nameAsTree(term) else
+        q"""{
+           val t=${ nameAsTree(term) }.get($field);
+           if  ( t == null ) $exOrDefault else $selector
+           }"""
+
+
+
+  if(
         //tpe =:= ByteTpe    || tpe =:= c.typeOf[java.lang.Byte     ]
         //|| tpe =:= ShortTpe   || tpe =:= c.typeOf[java.lang.Short    ]
          tpe =:= IntTpe     || tpe =:= c.typeOf[java.lang.Integer  ]
@@ -84,23 +97,23 @@ object Macros {
         //||
         //||
       ) {
-        q"$oname.asNumber().intValue()"
+        onameWithSelector(q"t.asNumber().intValue()")
       } else if (tpe =:= LongTpe    || tpe =:= c.typeOf[java.lang.Long     ]) {
-        q"$oname.asNumber().longValue()"
+        onameWithSelector(q"t.asNumber().longValue()")
       } else if (tpe =:= FloatTpe    || tpe =:= c.typeOf[java.lang.Float     ]) {
-        q"$oname.asNumber().doubleValue().toFloat"
+        onameWithSelector(q"t.asNumber().doubleValue().toFloat")
       } else if (tpe =:= DoubleTpe  || tpe =:= c.typeOf[java.lang.Double   ]) {
-        q"$oname.asNumber().doubleValue()"
+        onameWithSelector(q"t.asNumber().doubleValue()")
       } else if (tpe =:= BooleanTpe || tpe =:= c.typeOf[java.lang.Boolean  ]) {
-        q"$oname.asBoolean().getValue()"
+        onameWithSelector(q"t.asBoolean().getValue()")
       } else if(tpe =:= CharTpe    || tpe =:= c.typeOf[java.lang.Character] || tpe =:= c.typeOf[java.lang.String] ) {
-        q"$oname.asString().getValue()"
+        onameWithSelector(q"t.asString().getValue()")
       } else if (tpe.typeSymbol.fullName == "org.bson.types.ObjectId" ) {
-        q"$oname.asObjectId().getValue()"
+        onameWithSelector(q"t.asObjectId().getValue()")
       } else if (tpe.typeSymbol.fullName == "scala.Option") {
         val tpeElement = tpe.typeArgs.head
         val unpackFunName = TermName(c.freshName("unpack$"))
-        val unpackFun = q"def $unpackFunName(x:BsonValue) = { ${unpackOne("x","",tpeElement)} }"
+        val unpackFun = q"def $unpackFunName(x:BsonValue) = { ${unpackOne("x","",tpeElement,None)} }"
         q"""{
             $unpackFun
            val t=${nameAsTree(term)}.get($field)
@@ -114,7 +127,7 @@ object Macros {
         val tpeKey: c.universe.Type = tpe.typeArgs.head
         val tpeElement = tpe.typeArgs.tail.head
         val unpackFunName = TermName(c.freshName("unpack$"))
-        val unpackFun = q"def $unpackFunName(x:BsonValue) = { ${unpackOne("x","",tpeElement)} }"
+        val unpackFun = q"def $unpackFunName(x:BsonValue) = { ${unpackOne("x","",tpeElement,None)} }"
         if (tpeKey =:= c.typeOf[String]) {
           //BsonDocument().keySet().fo
           q"""{
@@ -163,7 +176,7 @@ object Macros {
       } else if (tpe.typeSymbol.fullName == "scala.Array" || tpe.baseClasses.exists(_.fullName == "scala.collection.Traversable")) { // Array is final class
         val tpeElement = tpe.typeArgs.head
         val unpackFunName = TermName(c.freshName("unpack$"))
-        val unpackFun = q"def $unpackFunName(x:BsonValue) = { ${unpackOne("x","",tpeElement)} }"
+        val unpackFun = q"def $unpackFunName(x:BsonValue) = { ${unpackOne("x","",tpeElement,None)} }"
         q"""{
             $unpackFun
            val t=${nameAsTree(term)}.get($field)
@@ -208,13 +221,30 @@ object Macros {
       c.abort(c.enclosingPosition, s"Companion symbol not found. Can't find companien for inner classes")
     }
 
-    val fields = tpe.decls.collectFirst {
-      case m: MethodSymbol if m.isPrimaryConstructor ⇒ m
-    }.get.paramLists.head
 
-    val fromDBObject: List[c.universe.Tree] = fields.map { field ⇒
+    val constructorSym = tpe.decls.collectFirst {
+      case m: MethodSymbol if m.isPrimaryConstructor ⇒ m
+    }.get
+
+    val fields = constructorSym.paramLists.head
+
+    //val applyMethod = companion.typeSignature.decl(TermName("apply")).asMethod
+    //val constructorMethod = constructorSym
+
+    val defaults = fields.map(_.asTerm).zipWithIndex.map { case (p,i)  =>
+      if (! p.isParamWithDefault) None
+      else {
+        val getterName = TermName("apply$default$" + (i + 1))
+        Some(q"$companion.$getterName")
+      }
+    }
+
+    println(defaults)
+    //println("constructorSym",constructorSym.asMethod,companion.typeSignature.decl(TermName("apply")).asMethod)
+
+    val fromDBObject: List[c.universe.Tree] = (fields zip defaults) .map { case (field,default) ⇒
       val name: c.universe.TermName = field.name.toTermName
-      unpackOne("o" , name.decodedName.toString,field.typeSignature)
+      unpackOne("o" , name.decodedName.toString,field.typeSignature,default)
     }
 
     //val fromDBObject: List[c.universe.Tree] = List()
