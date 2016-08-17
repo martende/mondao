@@ -6,7 +6,7 @@ import org.scalatest.FunSuite
 import scala.util.{Failure, Success, Try}
 
 class WritesSpec extends FunSuite {
-  /*
+
   test("test1") {
     case class AAA(a:Int,b:String)
     implicit val w1 = new Writes[AAA] {
@@ -90,18 +90,32 @@ class WritesSpec extends FunSuite {
     assert(d == BsonDocument("a" -> BsonDocument("faceLeft" ->true)))
   }
 
-*/
+
   test("test9") {
     case class AAA(a:String,b:ObjectId)
-    implicit val w2 = mondao.Macros.writesDebug[AAA]
+    implicit val w2 = mondao.Macros.writes[AAA]
     val oid = new ObjectId()
     val d = mondao.Convert.toBson(AAA("10",oid))
     assert(d == BsonDocument("a" -> "10", "b" -> oid))
   }
 
+
+  test("test10") {
+    object ImageTagsTp extends Enumeration {
+      val faceLeft = Value
+      val faceRight = Value
+      val faceAn = Value
+    }
+    case class AAA(a:ImageTagsTp.Value)
+    implicit val w2 = mondao.Macros.writes[AAA]
+
+    val d = mondao.Convert.toBson(AAA(ImageTagsTp.faceLeft))
+    assert(d == BsonDocument("a" -> "faceLeft"))
+  }
+
 }
 
-/*
+
 class ReadSpec extends FunSuite {
   case class ctest1(a:Int)
   test("test1") {
@@ -213,6 +227,7 @@ class ReadSpec extends FunSuite {
     val faceRight = Value
     val faceAn = Value
   }
+
   case class ctest12(a:Map[ImageTagsTp.Value,Int])
   test("test12") {
     implicit val w1 = mondao.Macros.reads[ctest12]
@@ -220,5 +235,35 @@ class ReadSpec extends FunSuite {
     val a = mondao.Convert.fromBson[ctest12](d).get
     assert(a == ctest12(Map(ImageTagsTp.faceLeft->1,ImageTagsTp.faceRight->2)))
   }
+
+
+  case class ctest13(a:String,b:Option[ObjectId])
+
+  test("test13") {
+    implicit val w2 = mondao.Macros.reads[ctest13]
+    val oid = new ObjectId()
+    val d = BsonDocument("a" -> "A","b" -> BsonObjectId(oid))
+    val a = mondao.Convert.fromBson[ctest13](d).get
+    assert(a == ctest13("A",Some(oid)))
+    val d2 = BsonDocument("a" -> "B","b" -> BsonNull())
+    val a2 = mondao.Convert.fromBson[ctest13](d2).get
+    assert(a2 == ctest13("B",None))
+  }
+
+
+  object test14Enum extends Enumeration {
+    val faceLeft = Value
+    val faceRight = Value
+    val faceAn = Value
+  }
+
+  case class ctest14(a:test14Enum.Value)
+
+  test("test14") {
+    implicit val w2 = mondao.Macros.reads[ctest14]
+    val d = BsonDocument("a" -> "faceLeft")
+    val a = mondao.Convert.fromBson[ctest14](d).get
+    assert(a == ctest14(test14Enum.faceLeft))
+  }
+
 }
-*/

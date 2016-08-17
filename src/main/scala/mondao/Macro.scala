@@ -33,10 +33,14 @@ object Macros {
   def writesDebug[A] = macro writesImplDebug[A]
 
   def reads[A] = macro readsImpl[A]
+  def readsDebug[A] = macro readsImplDebug[A]
 
   import scala.reflect.macros.Context
 
-  def readsImpl[A: c.WeakTypeTag](c: Context): c.Expr[Reads[A]] = {
+  def readsImpl[A: c.WeakTypeTag](c: Context) = _readsImpl[A](c,false)
+  def readsImplDebug[A: c.WeakTypeTag](c: Context) = _readsImpl[A](c,true)
+
+  def _readsImpl[A: c.WeakTypeTag](c: Context,dbg:Boolean): c.Expr[Reads[A]] = {
     import c.universe._
     import definitions._
 
@@ -68,7 +72,7 @@ object Macros {
       val oname = if (field  == "" ) nameAsTree(term) else
         q"""{
            val t=${ nameAsTree(term) }.get($field);
-           if  ( t == null ) throw new _root_.mondao.ConvertException($field,"is null") else t
+           if  ( t == null ) throw new _root_.mondao.ConvertException($field,"is null or not exists") else t
            }"""
 
       if(
@@ -93,6 +97,19 @@ object Macros {
         q"$oname.asString().getValue()"
       } else if (tpe.typeSymbol.fullName == "org.bson.types.ObjectId" ) {
         q"$oname.asObjectId().getValue()"
+      } else if (tpe.typeSymbol.fullName == "scala.Option") {
+        val tpeElement = tpe.typeArgs.head
+        val unpackFunName = TermName(c.freshName("unpack$"))
+        val unpackFun = q"def $unpackFunName(x:BsonValue) = { ${unpackOne("x","",tpeElement)} }"
+        q"""{
+            $unpackFun
+           val t=${nameAsTree(term)}.get($field)
+           if  ( t == null || t.isNull() ) {
+              None
+           } else {
+             Some($unpackFunName(t))
+           }
+        }"""
       } else if (tpe.baseClasses.exists(_.fullName == "scala.collection.GenMapLike")) {
         val tpeKey: c.universe.Type = tpe.typeArgs.head
         val tpeElement = tpe.typeArgs.tail.head
@@ -175,6 +192,9 @@ object Macros {
         val packFun = q"def $tmp(x:$innerType) = { $packAst }"
         q"BsonArray({ $packFun ; $oname.map($tmp) })"
         */
+      } else if ( tpe.baseClasses.exists(_.fullName == "scala.Enumeration.Value") ){
+        val baseEnumClass = nameAsTree(tpe.toString().split('.').dropRight(1).mkString("."))
+        q"""$baseEnumClass.withName($oname.asString().getValue())"""
       } else {
         //c.abort(c.enclosingPosition, s"unpackOne - type $tpe can not be converted to Bson")
         q"""_root_.mondao.Convert.fromBson[$tpe]($oname).get"""
@@ -211,10 +231,11 @@ object Macros {
       }
     """
     }
-
-    println("Replaced macro for ",weakTypeOf[A])
-    println(ret)
-    println("--------------------------")
+    if (dbg) {
+      println("Replaced macro for Reads: '" + weakTypeOf[A].toString+ "'")
+      println(ret)
+      println("--------------------------")
+    }
     ret
   }
 
@@ -262,7 +283,8 @@ object Macros {
         val packFun = q"def $tmp(x:($keyType,$innerType)) = { (x._1.toString , $packAst) }"
 
         q"BsonDocument({ $packFun ; $oname.map($tmp) })"
-
+      } else if ( tpe.baseClasses.exists(_.fullName == "scala.Enumeration.Value") ){
+        q"BsonString($oname.toString)"
       } else if (tpe.typeSymbol.fullName == "scala.Option") {
         val tmp = TermName(c.freshName("x$"))
         val innerType = tpe.typeArgs.head
@@ -311,7 +333,7 @@ object Macros {
     }
 
     if (dbg) {
-      println("Replaced macro for '" + weakTypeOf[A].toString+ "'")
+      println("Replaced macro for Writes: '" + weakTypeOf[A].toString+ "'")
       println(ret)
       println("--------------------------")
     }
