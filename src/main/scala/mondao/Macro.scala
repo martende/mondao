@@ -118,7 +118,7 @@ object Macros {
         val unpackFun = q"def $unpackFunName(x:BsonValue) = { ${unpackOne("x","",tpeElement,None)} }"
         q"""{
             $unpackFun
-           val t=${nameAsTree(term)}.get($field)
+           val t=$oname
            if  ( t == null || t.isNull() ) {
               None
            } else {

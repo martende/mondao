@@ -117,7 +117,6 @@ class WritesSpec extends FunSuite {
     case class AAA(a:(String,Int))
     implicit val w2 = mondao.Macros.writes[AAA]
     val d = mondao.Convert.toBson(AAA(("10",20)))
-    println(d)
     assert(d == BsonDocument("a" -> BsonArray("10",20) ))
   }
 
@@ -125,7 +124,6 @@ class WritesSpec extends FunSuite {
     case class AAA(a:Option[(String,Int)])
     implicit val w2 = mondao.Macros.writes[AAA]
     val d = mondao.Convert.toBson(AAA(Some(("10",20))))
-    println(d)
     assert(d == BsonDocument("a" -> BsonArray("10",20) ))
   }
 
@@ -308,6 +306,23 @@ class ReadSpec extends FunSuite {
     val d = BsonDocument("a"->BsonArray(true,10))
     val a = mondao.Convert.fromBson[ctest17](d).get
     assert(a == ctest17(Some((true,10))))
+  }
+
+
+  case class ctest18(a:(Option[Int], Option[Int]))
+
+  test("class ctest18(a:(Option[Int], Option[Int]))") {
+    implicit val w2 = mondao.Macros.reads[ctest18]
+    val d = BsonDocument("a"->BsonArray(10,20))
+    val a = mondao.Convert.fromBson[ctest18](d).get
+    assert(a == ctest18((Some(10),Some(20))))
+  }
+
+  test("class ctest18(a:(Option[Int], Option[Int])) on BsonArray(10, BsonNull())") {
+    implicit val w2 = mondao.Macros.readsDebug[ctest18]
+    val d2 = BsonDocument("a" -> BsonArray(10, BsonNull()))
+    val a2 = mondao.Convert.fromBson[ctest18](d2).get
+    assert(a2 == ctest18((Some(10), None)))
   }
 
 }
