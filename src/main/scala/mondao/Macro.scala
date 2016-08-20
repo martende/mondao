@@ -80,13 +80,15 @@ object Macros {
            if  ( t == null ) $defaultEx else t
            }"""
 
-      def onameWithSelector(selector:c.universe.Tree) = if (field  == "" ) nameAsTree(term) else
+      def onameWithSelector(selector:c.universe.Tree) = if (field  == "" )
+        q"""{
+            val t=${nameAsTree(term)}
+            if  ( t == null ) $exOrDefault else $selector
+                }"""else
         q"""{
            val t=${ nameAsTree(term) }.get($field);
            if  ( t == null ) $exOrDefault else $selector
            }"""
-
-
 
   if(
         //tpe =:= ByteTpe    || tpe =:= c.typeOf[java.lang.Byte     ]
@@ -123,6 +125,35 @@ object Macros {
              Some($unpackFunName(t))
            }
         }"""
+      } else if (tpe.typeSymbol.fullName == "scala.Tuple2") {
+        val tp1 = tpe.typeArgs.head
+        val tp2 = tpe.typeArgs.tail.head
+
+        val unpackFunName = TermName(c.freshName("unpack$"))
+        val unpackFun = q"def $unpackFunName(x:BsonValue) = { ${unpackOne("x","",tp1,None)} }"
+
+        q"""
+           val t=$oname
+           if ( ! t.isArray() ) {
+            throw new _root_.mondao.ConvertException($field,"is not Array but '" + t.getClass.toString + "'")
+           }
+           val ta = t.asArray()
+           if (ta.size() < 2) {
+            throw new _root_.mondao.ConvertException($field,"is Array but len must be equal 2")
+           }
+
+           ({
+              val tplcnv1 = ta.get(0)
+              ${unpackOne("tplcnv1", "", tp1, None)}
+           }
+            ,
+           {
+              val tplcnv2 = ta.get(1)
+              ${unpackOne("tplcnv2", "", tp2, None)}
+            }
+           )
+
+         """
       } else if (tpe.baseClasses.exists(_.fullName == "scala.collection.GenMapLike")) {
         val tpeKey: c.universe.Type = tpe.typeArgs.head
         val tpeElement = tpe.typeArgs.tail.head
@@ -239,7 +270,6 @@ object Macros {
       }
     }
 
-    println(defaults)
     //println("constructorSym",constructorSym.asMethod,companion.typeSignature.decl(TermName("apply")).asMethod)
 
     val fromDBObject: List[c.universe.Tree] = (fields zip defaults) .map { case (field,default) ⇒
@@ -251,6 +281,8 @@ object Macros {
     val ret = c.Expr[Reads[A]] {
       q"""
          new _root_.mondao.Reads[$tpe] {
+            import _root_.org.bson.types.ObjectId
+            import _root_.org.mongodb.scala.bson._
             def reads(_o:BsonValue) = try {
               if ( ! _o.isInstanceOf[BsonDocument] ) throw new _root_.mondao.ConvertException("init","case class is not BsonDocument")
               val o = _o.asInstanceOf[BsonDocument]
@@ -305,6 +337,18 @@ object Macros {
         || tpe =:= DoubleTpe  || tpe =:= c.typeOf[java.lang.Double   ]
         ) {
         q"BsonNumber($oname)"
+      } else if (tpe.baseClasses.exists(_.fullName == "scala.Tuple2")) {
+        val tp1 = tpe.typeArgs.head
+        val tp2 = tpe.typeArgs.tail.head
+
+        val packAst1 = packOne("xtpl2._1",tp1)
+        val packAst2 = packOne("xtpl2._2",tp2)
+
+        q"""{
+            val a1 = { val xtpl2 = $oname; $packAst1 }
+            val a2 = { val xtpl2 = $oname; $packAst2 }
+           BsonArray(a1,a2)
+        }"""
       } else if (tpe.baseClasses.exists(_.fullName == "scala.collection.GenMapLike")) {
         val tmp = TermName(c.freshName("x$"))
         val innerType = tpe.typeArgs.tail.head
@@ -335,8 +379,10 @@ object Macros {
 
         val packFun = q"def $tmp(x:$innerType) = { $packAst }"
         q"BsonArray({ $packFun ; $oname.map($tmp) })"
-      } else
+      } else {
         q"_root_.mondao.Convert.toBson($oname)"
+      }
+
     }
 
     val tpe: c.universe.Type = weakTypeOf[A]
@@ -354,10 +400,12 @@ object Macros {
 
     var ret =c.Expr[Writes[A]] {
       q"""
-         new Writes[$tpe] {
-             def writes(o:$tpe) = BsonDocument(
+         new _root_.mondao.Writes[$tpe] {
+            import _root_.org.bson.types.ObjectId
+            import _root_.org.mongodb.scala.bson._
+            def writes(o:$tpe) = BsonDocument(
                ..$toDBObject
-             )
+            )
       }
     """
     }

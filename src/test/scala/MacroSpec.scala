@@ -1,12 +1,11 @@
 import mondao.{Reads, Writes}
 import org.bson.types.ObjectId
-import org.mongodb.scala.bson.{BsonDocument, _}
+import org.mongodb.scala.bson._
 import org.scalatest.FunSuite
 
 import scala.util.{Failure, Success, Try}
 
 class WritesSpec extends FunSuite {
-
   test("test1") {
     case class AAA(a:Int,b:String)
     implicit val w1 = new Writes[AAA] {
@@ -113,11 +112,28 @@ class WritesSpec extends FunSuite {
     assert(d == BsonDocument("a" -> "faceLeft"))
   }
 
+
+  test("test11") {
+    case class AAA(a:(String,Int))
+    implicit val w2 = mondao.Macros.writes[AAA]
+    val d = mondao.Convert.toBson(AAA(("10",20)))
+    println(d)
+    assert(d == BsonDocument("a" -> BsonArray("10",20) ))
+  }
+
+  test("test12") {
+    case class AAA(a:Option[(String,Int)])
+    implicit val w2 = mondao.Macros.writes[AAA]
+    val d = mondao.Convert.toBson(AAA(Some(("10",20))))
+    println(d)
+    assert(d == BsonDocument("a" -> BsonArray("10",20) ))
+  }
+
+
 }
 
-
 class ReadSpec extends FunSuite {
-  /*
+
   case class ctest1(a:Int)
   test("test1") {
     implicit val w1 = mondao.Macros.reads[ctest1]
@@ -251,7 +267,6 @@ class ReadSpec extends FunSuite {
     assert(a2 == ctest13("B",None))
   }
 
-
   object test14Enum extends Enumeration {
     val faceLeft = Value
     val faceRight = Value
@@ -266,7 +281,7 @@ class ReadSpec extends FunSuite {
     val a = mondao.Convert.fromBson[ctest14](d).get
     assert(a == ctest14(test14Enum.faceLeft))
   }
-*/
+
   case class ctest15(a:Boolean=true,b:Int)
 
   test("test15") {
@@ -274,6 +289,25 @@ class ReadSpec extends FunSuite {
     val d = BsonDocument("b"->10)
     val a = mondao.Convert.fromBson[ctest15](d).get
     assert(a == ctest15(true,10))
+  }
+
+  case class ctest16(a:(Boolean,Int))
+
+  test("test16") {
+    implicit val w2 = mondao.Macros.reads[ctest16]
+    val d = BsonDocument("a"->BsonArray(true,10))
+    val a = mondao.Convert.fromBson[ctest16](d).get
+    assert(a == ctest16((true,10)))
+  }
+
+
+  case class ctest17(a:Option[(Boolean,Int)])
+
+  test("test17") {
+    implicit val w2 = mondao.Macros.reads[ctest17]
+    val d = BsonDocument("a"->BsonArray(true,10))
+    val a = mondao.Convert.fromBson[ctest17](d).get
+    assert(a == ctest17(Some((true,10))))
   }
 
 }
