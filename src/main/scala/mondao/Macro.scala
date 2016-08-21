@@ -80,6 +80,11 @@ object Macros {
            if  ( t == null ) $defaultEx else t
            }"""
 
+      val oname2 = if (field  == "" ) nameAsTree(term) else
+        q"""{
+           ${ nameAsTree(term) }.get($field);
+           }"""
+
       def onameWithSelector(selector:c.universe.Tree) = if (field  == "" )
         q"""{
             val t=${nameAsTree(term)}
@@ -118,7 +123,7 @@ object Macros {
         val unpackFun = q"def $unpackFunName(x:BsonValue) = { ${unpackOne("x","",tpeElement,None)} }"
         q"""{
             $unpackFun
-           val t=$oname
+           val t=$oname2
            if  ( t == null || t.isNull() ) {
               None
            } else {

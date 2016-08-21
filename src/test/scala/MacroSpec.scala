@@ -319,10 +319,19 @@ class ReadSpec extends FunSuite {
   }
 
   test("class ctest18(a:(Option[Int], Option[Int])) on BsonArray(10, BsonNull())") {
-    implicit val w2 = mondao.Macros.readsDebug[ctest18]
+    implicit val w2 = mondao.Macros.reads[ctest18]
     val d2 = BsonDocument("a" -> BsonArray(10, BsonNull()))
     val a2 = mondao.Convert.fromBson[ctest18](d2).get
     assert(a2 == ctest18((Some(10), None)))
+  }
+
+  case class ctest19(a : Option[Int] = None)
+
+  test("class ctest19(a : Option[Int] = None) on BsonDocument()") {
+    implicit val w2 = mondao.Macros.reads[ctest19]
+    val d2 = BsonDocument()
+    val a2 = mondao.Convert.fromBson[ctest19](d2).get
+    assert(a2 == ctest19(None))
   }
 
 }
