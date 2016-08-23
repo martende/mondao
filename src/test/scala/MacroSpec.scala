@@ -67,7 +67,9 @@ class WritesSpec extends FunSuite {
     val d = mondao.Convert.toBson(AAA(Some(10)))
     assert(d == BsonDocument("a" -> 10))
     val d2 = mondao.Convert.toBson(AAA(None))
-    assert(d2 == BsonDocument("a" -> BsonNull()))
+    // None for option does not changes document
+    assert(d2 == BsonDocument())
+    // assert(d2 == BsonDocument("a" -> BsonNull()))
   }
 
   test("test7") {
@@ -126,6 +128,14 @@ class WritesSpec extends FunSuite {
     val d = mondao.Convert.toBson(AAA(Some(("10",20))))
     assert(d == BsonDocument("a" -> BsonArray("10",20) ))
   }
+
+  test("test13") {
+    case class AAA(a:Option[String],b:Int,c:Option[String])
+    implicit val w2 = mondao.Macros.writes[AAA]
+    val d = mondao.Convert.toBson(AAA(Some("10"),20,None))
+    assert(d == BsonDocument("a" -> "10" , "b" -> 20 ))
+  }
+
 
 
 }

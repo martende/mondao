@@ -396,14 +396,20 @@ object Macros {
       case m: MethodSymbol if m.isPrimaryConstructor ⇒ m
     }.get.paramLists.head
 
-    val toDBObject = fields.map { field ⇒
+    val toDBObject = fields.filter(_.typeSignature.typeSymbol.fullName != "scala.Option").map { field ⇒
       val name: c.universe.TermName = field.name.toTermName
       val rightPart = packOne("o." + name.decodedName.toString,field.typeSignature)
       q"${name.decodedName.toString} -> $rightPart"
     }
 
+    val flattenedList = fields.filter(_.typeSignature.typeSymbol.fullName == "scala.Option").map { field ⇒
+      val name: c.universe.TermName = field.name.toTermName
+      val rightPart = packOne("o." + name.decodedName.toString,field.typeSignature)
+      q"{val t = $rightPart; if (t != bn) statics.put(${name.decodedName.toString},t) }"
+    }
 
-    var ret =c.Expr[Writes[A]] {
+
+    var ret = if (flattenedList.size == 0 ) c.Expr[Writes[A]] {
       q"""
          new _root_.mondao.Writes[$tpe] {
             import _root_.org.bson.types.ObjectId
@@ -411,6 +417,19 @@ object Macros {
             def writes(o:$tpe) = BsonDocument(
                ..$toDBObject
             )
+      }
+    """
+    } else c.Expr[Writes[A]] {
+      q"""
+         new _root_.mondao.Writes[$tpe] {
+            import _root_.org.bson.types.ObjectId
+            import _root_.org.mongodb.scala.bson._
+            def writes(o:$tpe) = {
+              val statics = BsonDocument(..$toDBObject)
+              val bn = BsonNull()
+              ..$flattenedList
+              statics
+            }
       }
     """
     }
