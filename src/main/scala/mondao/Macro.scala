@@ -201,7 +201,7 @@ object Macros {
               while ( it.hasNext() ) {
                 val k = it.next()
                 val o = ta.get(k)
-                bldr += $baseEnumClass.withName(k) -> $unpackFunName(o)
+                bldr += $baseEnumClass.withName( k.replace("-","$$minus")) -> $unpackFunName(o)
               }
               bldr.result
              }
@@ -243,7 +243,7 @@ object Macros {
         */
       } else if ( tpe.baseClasses.exists(_.fullName == "scala.Enumeration.Value") ){
         val baseEnumClass = nameAsTree(tpe.toString().split('.').dropRight(1).mkString("."))
-        q"""$baseEnumClass.withName($oname.asString().getValue())"""
+        q"""$baseEnumClass.withName($oname.asString().getValue().replace("-","$$minus"))"""
       } else {
         //c.abort(c.enclosingPosition, s"unpackOne - type $tpe can not be converted to Bson")
         q"""_root_.mondao.Convert.fromBson[$tpe]($oname).get"""
@@ -359,11 +359,14 @@ object Macros {
         val innerType = tpe.typeArgs.tail.head
         val keyType = tpe.typeArgs.head
         val packAst = packOne("x._2",innerType)
-        val packFun = q"def $tmp(x:($keyType,$innerType)) = { (x._1.toString , $packAst) }"
-
+        val packFun = if ( keyType.baseClasses.exists(_.fullName == "scala.Enumeration.Value") ){
+          q"""def $tmp(x:($keyType,$innerType)) = { (x._1.toString.replace("$$minus","-") , $packAst) }"""
+        } else {
+          q"def $tmp(x:($keyType,$innerType)) = { (x._1.toString , $packAst) }"
+        }
         q"BsonDocument({ $packFun ; $oname.map($tmp) })"
       } else if ( tpe.baseClasses.exists(_.fullName == "scala.Enumeration.Value") ){
-        q"BsonString($oname.toString)"
+        q"""BsonString($oname.toString.replace("$$minus","-"))"""
       } else if (tpe.typeSymbol.fullName == "scala.Option") {
         val tmp = TermName(c.freshName("x$"))
         val innerType = tpe.typeArgs.head

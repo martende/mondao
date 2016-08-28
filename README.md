@@ -46,6 +46,7 @@ to see more examples look at tests folder
 
 ### Limitations
 * Does not support macro expansion for classes that declared in functions.
+* Enumeration types are converted as their .toString conversions besides $minus that is converted to '-' symbol.
 
 ### Debugging
 * To print expanded macro during compilation use the following macros:

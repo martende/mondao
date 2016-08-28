@@ -136,6 +136,18 @@ class WritesSpec extends FunSuite {
     assert(d == BsonDocument("a" -> "10" , "b" -> 20 ))
   }
 
+  test("test14 - test case class AAA(a:Map[ImageTagsTp.Value,Boolean]) key=`double-litra` ") {
+    object ImageTagsTp extends Enumeration {
+      val faceLeft = Value
+      val faceRight = Value
+      val faceAn = Value
+      val `double-litra` = Value
+    }
+    case class AAA(a:Map[ImageTagsTp.Value,Boolean])
+    implicit val w2 = mondao.Macros.writes[AAA]
+    val d = mondao.Convert.toBson(AAA(Map(ImageTagsTp.`double-litra`->true)))
+    assert(d == BsonDocument("a" -> BsonDocument("double-litra" ->true)))
+  }
 
 
 }
@@ -342,6 +354,20 @@ class ReadSpec extends FunSuite {
     val d2 = BsonDocument()
     val a2 = mondao.Convert.fromBson[ctest19](d2).get
     assert(a2 == ctest19(None))
+  }
+
+  object test20Enum extends Enumeration {
+    val `double-litra` = Value
+    val faceRight = Value
+    val faceAn = Value
+  }
+
+  case class ctest20(a : test20Enum.Value)
+  test("class ctest20(a : test20Enum.Value) on BsonDocument(\"a\" -> \"double-litra\")") {
+    implicit val w2 = mondao.Macros.reads[ctest20]
+    val d2 = BsonDocument("a" -> "double-litra")
+    val a2 = mondao.Convert.fromBson[ctest20](d2).get
+    assert(a2 == ctest20(test20Enum.`double-litra`))
   }
 
 }
